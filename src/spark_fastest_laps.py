@@ -1,30 +1,52 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, min as spark_min
+from pyspark.sql.functions import col, min as spark_min, udf
+from pyspark.sql.types import StringType, DoubleType
+import os, shutil
 
-# 1. Crear sesión de Spark
-spark = SparkSession.builder \
-    .appName("F1 Fastest Laps") \
-    .getOrCreate()
+# === Función para formatear segundos a M:SS.mmm ===
+def format_duration(seconds: float) -> str:
+    if seconds is None:
+        return None
+    try:
+        seconds = float(seconds)  # 👈 aseguramos conversión
+    except:
+        return None
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds - int(seconds)) * 1000)
+    return f"{minutes}:{secs:02d}.{millis:03d}"
 
-#2. Leer JSON generado en el paso anterior 
-laps_df = spark.read.json("data/laps.json")
+format_udf = udf(format_duration, StringType())
 
-print("Schema de los datos:")
-laps_df.printSchema()
+# Sesión de Spark
+spark = SparkSession.builder.appName("F1 Fastest Laps").getOrCreate()
 
-# Mostrar primeras filas para inspección
-print("Ejemplo de datos:")
-laps_df.show(5)
+# 1. Cargar dataset procesado
+laps_df = spark.read.csv("data/processed_laps.csv", header=True, inferSchema=True)
 
-# 3. Seleccionar columnas de interés 
-laps_selected = laps_df.select("driver_number", "lap_number", "lap_duration")
+# 👇 forzar que lap_time_seconds sea double
+laps_df = laps_df.withColumn("lap_time_seconds", col("lap_time_seconds").cast(DoubleType()))
 
-# 4. Calcular vuelta más rápida por piloto 
-fastest_laps = laps_selected.groupBy("driver_number") \
-    .agg(spark_min("lap_duration").alias("fastest_lap_time"))
+# 2. Calcular la vuelta más rápida por piloto
+fastest_laps_df = laps_df.groupBy("driver_number") \
+    .agg(spark_min("lap_time_seconds").alias("fastest_lap_seconds"))
 
-# 5. Guardar resultados en CSV 
-fastest_laps.coalesce(1).write.mode("overwrite").csv("data/fastest_laps", header=True)
+# 3. Añadir formato legible
+fastest_laps_df = fastest_laps_df.withColumn(
+    "fastest_lap_formatted", format_udf(col("fastest_lap_seconds"))
+)
 
-print("✅ Archivo generado en data/fastest_laps/")
+print("Ejemplo de vueltas más rápidas por piloto:")
+fastest_laps_df.show(10, truncate=False)
+
+# === Guardar resultado ===
+output_dir = "data/tmp_fastest_laps"
+fastest_laps_df.coalesce(1).write.mode("overwrite").csv(output_dir, header=True)
+
+for file in os.listdir(output_dir):
+    if file.startswith("part") and file.endswith(".csv"):
+        shutil.move(os.path.join(output_dir, file), "data/fastest_laps.csv")
+        print("✅ Archivo final: data/fastest_laps.csv")
+
+shutil.rmtree(output_dir)
 spark.stop()
