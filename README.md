@@ -22,50 +22,40 @@ E2E_Formula1/
 │  └─analyze_laps.py
 └─ README.md
 ```
----
-
-## ⚙️ Pipeline de Procesamiento
-
-### 1. Ingesta de datos
-- Se descarga el archivo `laps.jsonl` desde la [API de OpenF1](https://openf1.org/).
-- Se almacena en `data/raw/`.
-
-### 2. Procesamiento inicial (`spark_process_laps.py`)
-- Lee los datos crudos en formato JSONL.  
-- Filtra:
-  - Vueltas con valores nulos.
-  - La primera vuelta de cada piloto (outlier por ser de salida de pit).  
-- Convierte los tiempos de vuelta a segundos y los formatea como `M:SS.mmm`.  
-- Exporta el dataset limpio a `data/processed/processed_laps.csv`.
-
-### 3. Cálculo de vueltas rápidas (`spark_fastest_laps.py`)
-- Lee el dataset procesado.  
-- Calcula la **vuelta más rápida por piloto** (en segundos).  
-- Añade una columna con el tiempo en formato legible `M:SS.mmm`.  
-- Exporta el resultado a `data/results/fastest_laps.csv`.
 
 ---
 
-## 📊 Ejemplo de salida
+## ⚙️ Flujo del Proyecto
 
-### Dataset procesado (`processed_laps.csv`)
-| driver_number | lap_number | lap_time_seconds | duration_sector_1 | duration_sector_2 | duration_sector_3 | is_pit_out_lap |
-|---------------|------------|------------------|-------------------|-------------------|-------------------|----------------|
-| 18            | 2          | 119.436          | 29.732            | 50.693            | 39.011            | false          |
-| 55            | 2          | 98.999           | 28.930            | 42.094            | 27.975            | false          |
+1. **Descarga de datos**
+   - Ejecutar `test_openf1.py` para obtener datos desde la API de OpenF1.
+   - Los resultados se guardan en `data/laps.json`.
 
-### Vueltas rápidas (`fastest_laps.csv`)
-| driver_number | fastest_lap_seconds | fastest_lap_formatted |
-|---------------|---------------------|------------------------|
-| 55            | 98.999              | 1:38.999               |
-| 18            | 119.436             | 1:59.436               |
+2. **Conversión a JSONL**
+   - Ejecutar `json_to_jsonl.py` para transformar `laps.json` a `laps.jsonl`.
+
+3. **Procesamiento con PySpark**
+   - Ejecutar `spark_process_laps.py`:
+     - Filtra y limpia los datos.
+     - Convierte tiempos a un formato legible (`MM:SS.mmm`).
+     - Guarda el dataset como `processed_laps.csv`.
+
+4. **Cálculo de vueltas más rápidas**
+   - Ejecutar `spark_fastest_laps.py`:
+     - Obtiene la vuelta más rápida de cada piloto.
+     - Genera `fastest_laps.csv`.
 
 ---
 
-## 🚀 Requisitos
+## 📊 Resultados
 
-- Python 3.9+
-- Apache Spark 3.x
-- Dependencias:
-  ```bash
-  pip install -r requirements.txt
+- **`processed_laps.csv`** → Dataset con todas las vueltas (limpio y legible).  
+- **`fastest_laps.csv`** → Vuelta más rápida por cada piloto.  
+
+---
+
+## 🚀 Tecnologías usadas
+
+- **Python 3**
+- **PySpark**
+- **Requests** (para consumir la API)
